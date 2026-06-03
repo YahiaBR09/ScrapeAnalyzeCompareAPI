@@ -1,0 +1,30 @@
+{
+  "name": "scrape-analyze-compare-api",
+  "version": "2.0.0",
+  "description": "Enterprise-grade pet food price comparison API with caching, pagination, and advanced filtering",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "sync": "node jobs/syncData.js",
+    "test": "echo \"No tests configured\""
+  },
+  "keywords": [
+    "pet-food",
+    "price-comparison",
+    "scraping",
+    "api",
+    "caching",
+    "cron"
+  ],
+  "author": "GitHub Copilot",
+  "license": "ISC",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "express": "^5.2.1",
+    "playwright": "^1.60.0"
+  }
+}
