@@ -1,0 +1,113 @@
+# ScrapeAnalyzeCompareAPI - Project Requirements
+# Project Requirements and Dependencies
+
+# ============================================
+# Node.js Dependencies (npm packages)
+# ============================================
+# Install all packages using: npm install
+# Install all packages using: npm install
+
+# Web Framework and API
+# Web Framework and API
+express@^5.2.1
+  # Node.js framework for building servers and APIs
+  # Node.js framework for building servers and APIs
+
+# Web Scraping and Automation
+# Web Scraping and Automation
+playwright@^1.60.0
+  # Browser automation library for advanced web scraping
+  # Browser automation library for advanced web scraping
+
+# Data Processing and Export
+# Data Processing and Export
+exceljs@^4.4.0
+  # Library for creating and manipulating Excel files
+  # Library for creating and manipulating Excel files
+
+# ============================================
+# Development Environment
+# Development Environment
+# ============================================
+
+Node.js version required: >= 14.0.0
+npm version required: >= 8.0.0
+
+# ============================================
+# Optional Packages (Development)
+# ============================================
+
+# For development and testing (Development)
+# nodemon@latest - Auto-reload the project
+# npm install --save-dev nodemon
+
+# For testing (Testing)
+# jest@latest - Testing framework
+# npm install --save-dev jest
+
+# ============================================
+# Installation Methods
+# ============================================
+
+# Method 1: Install from package.json
+npm install
+
+# Method 2: Install individual packages
+npm install express@5.2.1
+npm install playwright@1.60.0
+npm install exceljs@4.4.0
+
+# Method 3: Install multiple packages at once
+npm install express playwright exceljs
+
+# ============================================
+# Verification
+# ============================================
+
+# Check Node.js version
+node --version
+
+# Check npm version
+npm --version
+
+# Check installed packages
+npm list
+
+# ============================================
+# Important Notes
+# ============================================
+
+# 1.Make sure Node.js and npm are installed on your system
+
+# 2.Playwright may take some time to download on first install
+
+# 3.Ensure internet connection during installation
+
+# 4.On Windows, you may need to run PowerShell as Admin
+
+# ============================================
+# Updates
+# ============================================
+
+# Update all packages
+npm update
+
+# Update specific package
+npm update playwright
+
+# ============================================
+# Troubleshooting
+# ============================================
+
+# If you encounter issues, try:
+
+# 1.Delete node_modules and reinstall
+rm -r node_modules
+npm install
+
+# 2.Delete package-lock.json and reinstall
+rm package-lock.json
+npm install
+
+# 3.Clear npm cache
+npm cache clean --force

@@ -1,193 +1,94 @@
-const { normalize } = require('./normalize');
-const { extractKeywords, getProductType, extractWeightValue } = require('./extractKeywords');
+const { extractKeywords, getProductType } = require('./extractKeywords');
 
-function similarity(a, b) {
-    if (!a || !b) return 0;
-    const wordsA = a.split(' ').filter(w => w.length > 0);
-    const wordsB = b.split(' ').filter(w => w.length > 0);
-    if (wordsA.length === 0 || wordsB.length === 0) return 0;
-    
-    const A = new Set(wordsA);
-    const B = new Set(wordsB);
-    let intersection = 0;
-    for (let word of A) { if (B.has(word)) intersection++; }
-    const union = new Set([...A, ...B]).size;
-    return union === 0 ? 0 : intersection / union;
-}
-
-function levenshteinDistance(a, b) {
-    const track = Array(b.length + 1).fill(null).map(() => Array(a.length + 1).fill(null));
-    for (let i = 0; i <= a.length; i++) track[0][i] = i;
-    for (let j = 0; j <= b.length; j++) track[j][0] = j;
-    
-    for (let j = 1; j <= b.length; j++) {
-        for (let i = 1; i <= a.length; i++) {
-            const indicator = a[i - 1] === b[j - 1] ? 0 : 1;
-            track[j][i] = Math.min(track[j][i - 1] + 1, track[j - 1][i] + 1, track[j - 1][i - 1] + indicator);
-        }
-    }
-    return track[b.length][a.length];
-}
-
-function stringSimilarity(a, b) {
-    const maxLen = Math.max(a.length, b.length);
-    if (maxLen === 0) return 1;
-    return 1 - (levenshteinDistance(a, b) / maxLen);
-}
-
-function extractBrand(name = "") {
-    const knownBrands = [
-        "royal canin",
-        "pedigree",
-        "montego",
-        "purina",
-        "iams",
-        "hills",
-        "hill's",
-        "eukanuba",
-        "acana",
-        "orijen",
-        "rogz",
-        "superwoof",
-        "jock",
-        "bobtail",
-        "olympic",
-        "kong",
-        "marltons",
-        "dog's life",
-        "dogs life",
-        "ultra dog",
-        "nutribyte"
+// Function to extract a strict brand name from the product title for more accurate matching (solves the Jock vs Montego issue by ensuring that if a known brand is mentioned, it must match exactly)
+function extractStrictBrand(name = "") {
+    const brands = [
+        "royal canin", "montego", "purina", "rogz", "marltons", 
+        "nutribyte", "feelgood pets", "devoted by nature", "jock",
+        "olympic", "ultra dog", "supervet", "dog's life", "dogs life", "sheba"
     ];
-
     const lower = name.toLowerCase();
-
-    // ابحث عن أطول ماركة أولاً
-    const sortedBrands = [...knownBrands]
-        .sort((a, b) => b.length - a.length);
-
-    for (const brand of sortedBrands) {
-        if (lower.includes(brand)) {
-            return brand
-                .replace("dog's life", "dogs life")
-                .replace("hill's", "hills");
-        }
+    for (const b of brands) {
+        if (lower.includes(b)) return b;
     }
-
-    return null;
+    return "generic"; // If no known brand is found, return "generic" to allow for more flexible matching with other generic products, but still prevent mismatches between known brands.
 }
 
-function finalScore(a, b) {
-    if (!a || !b || !a.name || !b.name) return 0;
-    
-    const normalizedA = normalize(a.name);
-    const normalizedB = normalize(b.name);
-    
-    const nameScore = (similarity(normalizedA, normalizedB) * 0.6) + (stringSimilarity(normalizedA, normalizedB) * 0.4);
-    
-    const brandA = extractBrand(a.name);
-    const brandB = extractBrand(b.name);
-    const weightA = extractWeightValue(a.name);
-    const weightB = extractWeightValue(b.name);
-    
-    // مطابقة الماركة التجارية (Brand check)
-    if (brandA && brandB && brandA !== brandB) {
+// Function to check for mismatches in life stage and size (Adult vs Puppy vs Kitten)
+function checkLifeStageAndSizeMismatch(nameA, nameB) {
+    const nA = nameA.toLowerCase();
+    const nB = nameB.toLowerCase();
 
-        const isFood =
-            normalizedA.includes('food') ||
-            normalizedB.includes('food');
+    // 1. فحص الفئة العمرية
+    if ((nA.includes('puppy') && !nB.includes('puppy')) || (!nA.includes('puppy') && nB.includes('puppy'))) return true;
+    if ((nA.includes('kitten') && !nB.includes('kitten')) || (!nA.includes('kitten') && nB.includes('kitten'))) return true;
+    if ((nA.includes('senior') && !nB.includes('senior')) || (!nA.includes('senior') && nB.includes('senior'))) return true;
+    if ((nA.includes('adult') && nB.includes('puppy')) || (nA.includes('puppy') && nB.includes('adult'))) return true;
 
-        // للأطعمة فقط: منع المطابقة
-        if (isFood) {
-            return 0;
-        }
-    }
-    
-    // مطابقة الوزن الصارم (Weight check)
-    const isFood =
-        normalizedA.includes('food') ||
-        normalizedB.includes('food');
+    // 2. check for size mismatches (Small vs Large vs Giant)
+    if ((nA.includes('small') && nB.includes('large')) || (nA.includes('large') && nB.includes('small'))) return true;
+    if ((nA.includes('giant') && !nB.includes('giant')) || (!nA.includes('giant') && nB.includes('giant'))) return true;
 
-    if (isFood && weightA && weightB) {
-
-        const diff = Math.abs(weightA - weightB);
-
-        if (diff > 0.1) return 0;
-    } else if ((weightA && !weightB) || (!weightA && weightB)) {
-        // إذا كان المنتج طعاماً، يمنع منعاً باتاً مطابقة عبوة معلومة الوزن بأخرى مجهولة الوزن
-        const isFood = a.name.toLowerCase().includes('food') || b.name.toLowerCase().includes('food');
-        if (isFood) return 0;
-    }
-    
-    let score = nameScore;
-
-    if (brandA && brandB) {
-        if (brandA === brandB) {
-            score += 0.15;
-        }
-    }
-
-    return Math.min(score, 1);
+    return false; // no conflicts found
 }
 
 function findBestMatch(product, candidates) {
+    const pBrand = extractStrictBrand(product.name);
+    const pType = getProductType(product.name);
+    const pKeywords = extractKeywords(product.name);
+
     let best = null;
     let bestScore = 0;
 
-    const productKeywords = extractKeywords(product.name);
-    const productType = getProductType(product.name);
-    const productWeight = extractWeightValue(product.name);
-
-    if (productKeywords.length === 0) return null;
-
     for (let item of candidates) {
-        const itemWeight = extractWeightValue(item.name);
-        // 1. فحص تصنيفات الأطعمة (رطب vs جاف)
-        if (productType !== getProductType(item.name)) continue;
+        // 🚨 strict condition 1: if brands are extracted and not matching, exclude immediately (solves the Jock vs Montego issue)
+        const iBrand = extractStrictBrand(item.name);
+        if (pBrand !== "generic" && iBrand !== "generic" && pBrand !== iBrand) continue;
 
-        // 2. فحص الأوزان المتباينة جذرياً قبل الحساب المعقد
-        const isFood =
-            product.name.toLowerCase().includes('food') ||
-            item.name.toLowerCase().includes('food');
+        // 🚨 strict condition 2: prevent overlap between cat food and dog food
+        const pDog = product.name.toLowerCase().includes('dog');
+        const pCat = product.name.toLowerCase().includes('cat');
+        const iDog = item.name.toLowerCase().includes('dog');
+        const iCat = item.name.toLowerCase().includes('cat');
+        if ((pDog && iCat) || (pCat && iDog)) continue;
 
-        if (
-            isFood &&
-            productWeight &&
-            itemWeight &&
-            Math.abs(productWeight - itemWeight) > 0.1
-        ) {
-            continue;
-        }
+        // 🚨 strict condition 3: check product type (dry, wet, treat)
+        if (pType !== getProductType(item.name)) continue;
 
-        // 3. حساب درجة التوافق المشترك
+        // 🚨 strict condition 4: prevent mixing life stages (Adult vs Puppy)
+        if (checkLifeStageAndSizeMismatch(product.name, item.name)) continue;
+
+        // Calculate actual keyword similarity (stable Jaccard Similarity)
         const itemKeywords = extractKeywords(item.name);
-        const common = productKeywords.filter(k => itemKeywords.includes(k));
+        const common = pKeywords.filter(k => itemKeywords.includes(k));
         
-        // يجب أن يشتركا في كلمتين دالتين على الأقل (مثل اسم اللعبة أو نوع اللحم)
-        if (common.length < 1) continue;
+        if (common.length === 0) continue;
 
-        let score = finalScore(product, item);
+        const intersect = common.length;
+        const union = new Set([...pKeywords, ...itemKeywords]).size;
+        let score = intersect / union;
 
-        score += Math.min(
-            common.length * 0.05,
-            0.20
-        );
+        // 🚨 enhance products that mention flavor details accurately (e.g., Chicken or Salmon)
+        const flavors = ['chicken', 'lamb', 'beef', 'tuna', 'salmon', 'trout', 'venison'];
+        for (let flavor of flavors) {
+            if (product.name.toLowerCase().includes(flavor) && item.name.toLowerCase().includes(flavor)) {
+                score += 0.15; // increase confidence if flavors match
+            }
+        }
 
         score = Math.min(score, 1);
 
-        if (score > bestScore) {
+        // Decision: Only consider this item as the best match if it has the highest score so far AND meets a minimum threshold of 0.65 to ensure relevance (this prevents weak matches from being selected, which is critical for solving the Jock vs Montego issue where some products might have similar keywords but are actually different products)
+        if (score > bestScore && score >= 0.65) {
             bestScore = score;
             best = item;
         }
     }
-    if (bestScore >= 0.75) {
-        console.log(
-            `[MATCH] ${product.name} -> ${best.name} (${bestScore.toFixed(3)})`
-        );
-    }
 
-    // رفع حد القبول لـ 0.75 لضمان استبعاد أي مطابقات عشوائية للألعاب المتقاربة في الأسماء
-    return bestScore >= 0.75 ? { best, score: bestScore } : null;
+    if (best) {
+        return { best, score: bestScore };
+    }
+    return null;
 }
 
 module.exports = { findBestMatch };

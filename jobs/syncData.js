@@ -3,16 +3,16 @@ const { saveCacheData } = require('../services/cache');
 
 let syncInProgress = false;
 
-async function syncData(limit = 100) {
+async function syncData(limit = 1000) {
     if (syncInProgress) {
-        console.log('⏭️  المزامنة جاري تنفيذها بالفعل، تخطي...');
+        console.log('⏭️  Sync is already in progress, skipping...');
         return;
     }
 
     syncInProgress = true;
     const startTime = Date.now();
     console.log(`\n${'='.repeat(50)}`);
-    console.log(`⏰ بدء المزامنة في ${new Date().toLocaleString('ar-SA')}`);
+    console.log(`⏰ Beginning sync at ${new Date().toLocaleString('ar-SA')}`);
     console.log(`${'='.repeat(50)}`);
 
     try {
@@ -22,19 +22,19 @@ async function syncData(limit = 100) {
             ...result,
             lastUpdated: new Date().toISOString(),
             syncDuration: Date.now() - startTime,
-            nextSync: new Date(Date.now() + 60 * 60 * 1000).toISOString() // بعد ساعة
+            nextSync: new Date(Date.now() + 60 * 60 * 1000).toISOString() // after an hour
         };
 
         saveCacheData(cacheData);
 
-        console.log(`\n✅ اكتملت المزامنة بنجاح`);
-        console.log(`   المطابقات: ${result.stats.matches_found}`);
-        console.log(`   الوقت المستغرق: ${(cacheData.syncDuration / 1000).toFixed(2)} ثانية`);
-        console.log(`   المزامنة التالية: ${new Date(cacheData.nextSync).toLocaleString('ar-SA')}`);
+        console.log(`\n✅ Sync completed successfully`);
+        console.log(`   Matches found: ${result.stats.matches_found}`);
+        console.log(`   Time taken: ${(cacheData.syncDuration / 1000).toFixed(2)} seconds`);
+        console.log(`   Next sync: ${new Date(cacheData.nextSync).toLocaleString('ar-SA')}`);
         console.log(`${'='.repeat(50)}\n`);
 
     } catch (err) {
-        console.error(`\n❌ خطأ في المزامنة: ${err.message}`);
+        console.error(`\n❌ Error in sync: ${err.message}`);
         console.error(`${'='.repeat(50)}\n`);
     } finally {
         syncInProgress = false;
@@ -42,12 +42,13 @@ async function syncData(limit = 100) {
 }
 
 function startCronJob(intervalMinutes = 60) {
-    console.log(`\n⏰ بدء Cron Job - المزامنة كل ${intervalMinutes} دقيقة`);
-    
-    // تشغيل أول مرة فوراً
+    console.log(`\n⏰ Beginning Cron Job - Sync every ${intervalMinutes} minutes`);
+
+    // Run once immediately
+
     syncData(100);
     
-    // ثم كل X دقيقة
+    // every intervalMinutes minutes
     const interval = setInterval(() => {
         syncData(100);
     }, intervalMinutes * 60 * 1000);

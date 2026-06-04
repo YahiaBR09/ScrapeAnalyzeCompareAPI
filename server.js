@@ -6,12 +6,12 @@ const { exportMatchesToExcel } = require('./services/excelExport');
 
 const app = express();
 
-// بدء Cron Job عند تشغيل السيرفر
-startCronJob(60); // المزامنة كل 60 دقيقة
+// Start Cron Job when server starts
+startCronJob(60); // Sync every 60 minutes
 
 /**
  * GET /market
- * الحصول على جميع المطابقات مع دعم:
+ * Get all matches with support for:
  * - Pagination: ?page=1&limit=20
  * - Filtering: ?source=takealot, ?minSavings=50, ?minScore=0.85
  */
@@ -22,15 +22,15 @@ app.get('/market', (req, res) => {
         if (!cachedData || !cachedData.results) {
             return res.status(503).json({
                 success: false,
-                error: 'البيانات لم تتم معالجتها بعد، حاول لاحقاً',
-                hint: 'سيتم إعداد البيانات خلال دقائق...'
+                error: 'Data not processed yet, please try again later',
+                hint: 'Data will be ready in a few minutes...'
             });
         }
 
         let { results, stats } = cachedData;
 
-        // 🔍 التصفية (Filtering)
-        console.log(`\n📋 طلب /market مع filters:`);
+        // 🔍 Filtering
+        console.log(`\n📋 Request /market with filters:`);
 
         if (req.query.source) {
             results = results.filter(r => 
@@ -66,7 +66,7 @@ app.get('/market', (req, res) => {
             console.log(`   ✓ brand: ${brand}`);
         }
 
-        // 📄 الترقيم (Pagination)
+        // 📄 Pagination
         const limit = Math.min(parseInt(req.query.limit) || 20, 100);
         const page = Math.max(parseInt(req.query.page) || 1, 1);
         const start = (page - 1) * limit;
@@ -112,8 +112,8 @@ app.get('/market', (req, res) => {
 
 /**
  * GET /market/deals
- * الحصول على أفضل العروض (بتوفير كبير)
- * مثال: /market/deals?minSavings=50&page=1&limit=10
+ * Get best deals (with significant savings)
+ * Example: /market/deals?minSavings=50&page=1&limit=10
  */
 app.get('/market/deals', (req, res) => {
     try {
@@ -122,7 +122,7 @@ app.get('/market/deals', (req, res) => {
         if (!cachedData) {
             return res.status(503).json({
                 success: false,
-                error: 'البيانات لم تتم معالجتها بعد'
+                error: 'Data not processed yet'
             });
         }
 
@@ -134,14 +134,14 @@ app.get('/market/deals', (req, res) => {
         const start = (page - 1) * limit;
         const totalPages = Math.ceil(deals.length / limit);
 
-        const sortBy = req.query.sortBy || 'savings'; // savings أو score
+        const sortBy = req.query.sortBy || 'savings'; // savings or score
         if (sortBy === 'savings') {
             deals.sort((a, b) => b.best_deal.savings - a.best_deal.savings);
         } else if (sortBy === 'score') {
             deals.sort((a, b) => b.match_score - a.match_score);
         }
 
-        console.log(`\n🎁 طلب /market/deals - minSavings: ${minSavings}R, sortBy: ${sortBy}`);
+        console.log(`\n🎁 Request /market/deals - minSavings: ${minSavings}R, sortBy: ${sortBy}`);
 
         res.json({
             success: true,
@@ -172,7 +172,7 @@ app.get('/market/deals', (req, res) => {
 
 /**
  * GET /market/stats
- * إحصائيات عامة
+ * General statistics
  */
 app.get('/market/stats', (req, res) => {
     try {
@@ -181,11 +181,11 @@ app.get('/market/stats', (req, res) => {
         if (!cachedData) {
             return res.status(503).json({
                 success: false,
-                error: 'البيانات لم تتم معالجتها بعد'
+                error: 'Data not processed yet'
             });
         }
 
-        console.log(`\n📊 طلب /market/stats`);
+        console.log(`\n📊 Request /market/stats`);
 
         res.json({
             success: true,
@@ -210,27 +210,27 @@ app.get('/market/stats', (req, res) => {
 
 /**
  * POST /market/sync
- * تشغيل المزامنة يدوياً (للعميل)
+ * Run manual synchronization (from client)
  */
 app.get('/market/sync', async (req, res) => {
     try {
-        console.log(`\n🔄 طلب يدوي للمزامنة من العميل`);
+        console.log(`\n🔄 Manual synchronization request from client`);
         
         if (isCacheExpired(0)) {
-            // قم بتشغيل المزامنة الآن
+            // Run sync now
             const limit = parseInt(req.query.limit) || 100;
             await syncData(limit);
             
             const cachedData = getCachedData();
             res.json({
                 success: true,
-                message: 'تم تحديث البيانات بنجاح',
+                message: 'Data updated successfully',
                 stats: cachedData.stats
             });
         } else {
             res.json({
                 success: false,
-                message: 'البيانات حديثة، المزامنة السابقة كانت قريبة جداً',
+                message: 'Data is fresh, previous sync was too recent',
                 lastUpdated: getCachedData().lastUpdated
             });
         }
@@ -288,7 +288,7 @@ app.get('/market/export', async (req, res) => {
 
 /**
  * GET /health
- * فحص صحة السيرفر
+ * Check server health
  */
 app.get('/health', (req, res) => {
     const cachedData = getCachedData();
@@ -298,7 +298,7 @@ app.get('/health', (req, res) => {
     res.json({
         status: cachedData ? 'healthy' : 'initializing',
         cacheExists: !!cachedData,
-        cacheAge: cacheAge ? `${cacheAge} دقيقة` : 'لم تتم المزامنة بعد',
+        cacheAge: cacheAge ? `${cacheAge} minutes` : 'Sync not yet performed',
         timestamp: new Date().toISOString()
     });
 });
@@ -309,12 +309,12 @@ app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
     console.log(`${'='.repeat(50)}`);
     console.log(`\n📡 Available Endpoints:`);
-    console.log(`   GET  /market              - جميع المطابقات مع pagination + filters`);
-    console.log(`   GET  /market?page=2&limit=10  - الصفحة 2 بـ 10 نتائج`);
-    console.log(`   GET  /market?minSavings=50    - فقط العروض بتوفير 50+ راند`);
-    console.log(`   GET  /market/deals            - أفضل العروض (توفير كبير)`);
-    console.log(`   GET  /market/stats            - الإحصائيات العامة`);
-    console.log(`   GET  /market/sync             - تحديث يدوي للبيانات`);
-    console.log(`   GET  /health                  - فحص صحة السيرفر`);
+    console.log(`   GET  /market              - All matches with pagination + filters`);
+    console.log(`   GET  /market?page=2&limit=10  - Page 2 with 10 results`);
+    console.log(`   GET  /market?minSavings=50    - Only deals with 50+ rand savings`);
+    console.log(`   GET  /market/deals            - Best deals (significant savings)`);
+    console.log(`   GET  /market/stats            - General statistics`);
+    console.log(`   GET  /market/sync             - Manual data update`);
+    console.log(`   GET  /health                  - Server health check`);
     console.log(`${'='.repeat(50)}\n`);
 });

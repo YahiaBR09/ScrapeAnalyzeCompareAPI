@@ -16,11 +16,11 @@ function getCachedData() {
         if (fs.existsSync(CACHE_FILE)) {
             const data = fs.readFileSync(CACHE_FILE, 'utf8');
             const parsed = JSON.parse(data);
-            console.log(`✓ تم قراءة الـ cache: ${parsed.stats.matches_found} مطابقة محفوظة`);
+            console.log(`✓ Cache read: ${parsed.stats.matches_found} Saved match`);
             return parsed;
         }
     } catch (err) {
-        console.error('❌ خطأ في قراءة الـ cache:', err.message);
+        console.error('❌ Error reading cache:', err.message);
     }
     return null;
 }
@@ -29,9 +29,9 @@ function saveCacheData(data) {
     try {
         ensureCacheDir();
         fs.writeFileSync(CACHE_FILE, JSON.stringify(data, null, 2), 'utf8');
-        console.log(`✅ تم حفظ الـ cache: ${data.stats.matches_found} مطابقة في ${CACHE_FILE}`);
+        console.log(`✅ Cache saved: ${data.stats.matches_found} Saved match in ${CACHE_FILE}`);
     } catch (err) {
-        console.error('❌ خطأ في حفظ الـ cache:', err.message);
+        console.error('❌ Error saving cache:', err.message);
     }
 }
 
@@ -46,6 +46,7 @@ function isCacheExpired(maxAgeMinutes = 60) {
         
         return ageMinutes > maxAgeMinutes;
     } catch (err) {
+        console.error('❌ Error checking cache expiration:', err.message);
         return true;
     }
 }

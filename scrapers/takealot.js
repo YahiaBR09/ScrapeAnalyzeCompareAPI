@@ -4,7 +4,7 @@ async function scrapeTakealotCustomCategories() {
     const browser = await chromium.launch({ headless: false });
     const page = await browser.newPage();
 
-    // الكلمات الدلالية للبحث في الموقع بما يوافق التصنيفات الخمسة المطلوبة
+    // Words to search for each category to ensure we get relevant products and reach the 100 product limit per category
     const categories = [
 
         // Dogs
@@ -23,24 +23,33 @@ async function scrapeTakealotCustomCategories() {
 
     ];
 
-    const limitPerCategory = 150; // الحد الصارم لكل صنف
+    const limitPerCategory = 150; // the strict limit for each category
     let allProducts = [];
 
     try {
         for (const cat of categories) {
             console.log(`\n📂 ─────────────────────────────────────────────`);
-            console.log(`🚀 بدء كشط تصنيف [ ${cat.name} ] -> البحث عن: "${cat.query}"...`);
+            console.log(`🚀 Beginning scrape for category [ ${cat.name} ] -> searching for: "${cat.query}"...`);
             console.log(`📂 ─────────────────────────────────────────────`);
 
-            // فتح الموقع والتوجه لمحرك البحث لكل صنف بشكل مستقل
+            // 🔥 2. Put route handling code here
+            await page.route('**/*', (route) => {
+                const type = route.request().resourceType();
+                if (['image', 'media', 'font', 'stylesheet'].includes(type)) {
+                    route.abort();
+                } else {
+                    route.continue();
+                }
+            });
+            // open homepage and search for the category query
             await page.goto('https://www.takealot.com', { waitUntil: 'domcontentloaded' });
-            await page.waitForSelector('input.search-field', { timeout: 60000 });
+            await page.waitForSelector('input.search-field', { timeout: 150000 });
             await page.fill('input.search-field', cat.query);
             await page.keyboard.press('Enter');
 
-            // انتظر تحميل المنتجات الافتراضية أولاً
-            await page.waitForSelector('article.product-card', { timeout: 60000 }).catch(() => {
-                console.log('⚠️ لم تظهر نتائج لهذا البحث، الانتقال للتصنيف التالي.');
+            // wait for the default products to load
+            await page.waitForSelector('article.product-card', { timeout: 150000 }).catch(() => {
+                console.log('⚠️ No results found for this search, moving to the next category.');
             });
 
             let catProducts = [];
@@ -48,7 +57,7 @@ async function scrapeTakealotCustomCategories() {
             const maxClicks = 15;
 
             while (catProducts.length < limitPerCategory && clickCount < maxClicks) {
-                // استخراج المنتجات الحالية من الصفحة
+                // extract products from the current page
                 const pageProducts = await page.$$eval('article.product-card', (cards, catName) => {
                     return cards.map(card => {
                         const name = card.querySelector('h4, h2, [data-testid*="product-name"]')?.innerText?.trim();
@@ -67,7 +76,7 @@ async function scrapeTakealotCustomCategories() {
                     }).filter(p => p.name && p.price && p.name.length > 3);
                 }, cat.name);
 
-                // حفظ العناصر الفرعية للتصنيف الحالي لمنع التكرار وضمان سقف الـ 100
+                // safe merge new products while ensuring we don't exceed the limit and avoid duplicates
                 for (const product of pageProducts) {
                     if (!catProducts.find(p => p.url === product.url)) {
                         catProducts.push(product);
@@ -75,11 +84,11 @@ async function scrapeTakealotCustomCategories() {
                     if (catProducts.length >= limitPerCategory) break;
                 }
 
-                console.log(`✓ تم تجمع ${catProducts.length}/${limitPerCategory} منتج لتصنيف [${cat.name}]`);
+                console.log(`✓ Collected ${catProducts.length}/${limitPerCategory} products for category [${cat.name}]`);
 
                 if (catProducts.length >= limitPerCategory) break;
 
-                // النزول لضغط زر Load More لاستكشاف المزيد من ذات الصنف
+                // scroll down to click the Load More button to explore more products in the category
                 try {
                     const loadMoreExists = await page.evaluate(() => {
                         const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Load More'));
@@ -95,9 +104,9 @@ async function scrapeTakealotCustomCategories() {
                             }
                         });
                         clickCount++;
-                        await page.waitForTimeout(3000); // زيادة وقت الانتظار بعد الفرز لضمان تحميل المنتجات المصنفة
+                        await page.waitForTimeout(3000); // increase wait time to allow new products to load
                     } else {
-                        console.log('✓ لا يوجد المزيد من النتائج المتاحة في المتجر لهذا البحث.');
+                        console.log('✓ No more results available in the store for this search.');
                         break;
                     }
                 } catch (error) {
@@ -105,16 +114,16 @@ async function scrapeTakealotCustomCategories() {
                 }
             }
 
-            // دمج منتجات الصنف الحالي مع مصفوفة النتائج الكلية
+            // merge current category products with the overall results array
             allProducts = allProducts.concat(catProducts);
         }
 
         await browser.close();
-        console.log(`\n🎉 اكتمل كشط Takealot بنجاح! الإجمالي المصنف لـ Top Rated: ${allProducts.length}`);
+        console.log(`\n🎉 Scrape completed successfully! Total products collected for Top Rated: ${allProducts.length}`);
         return allProducts;
 
     } catch (error) {
-        console.error('❌ خطأ رئيسي في كشط Takealot:', error);
+        console.error('❌  error in Takealot scrape:', error);
         await browser.close();
         return allProducts;
     }

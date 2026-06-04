@@ -12,8 +12,17 @@ async function scrapePetHeavenAllCategories() {
     });
 
     const page = await context.newPage();
+    // 🔥 2. put route handling here (before navigating to the URL)
+    await page.route('**/*', (route) => {
+        const type = route.request().resourceType();
+        if (['image', 'media', 'font'].includes(type)) {
+            route.abort();
+        } else {
+            route.continue();
+        }
+    });
 
-    // خريطة التصنيفات والروابط الخاصة بها على موقع PetHeaven
+    // mapping of our custom categories to their corresponding search queries on the website to ensure we get relevant products and reach the 100 product limit per category
     const categories = [
 
         // Dogs
@@ -35,7 +44,7 @@ async function scrapePetHeavenAllCategories() {
     let allProducts = [];
 
     async function scrollSlowlyToBottom() {
-        console.log('📜 جاري النزول ببطء لأسفل الصفحة...');
+        console.log('📜 scrolling to bottom...');
         try {
             await page.waitForLoadState('domcontentloaded', { timeout: 15000 });
             let scrolled = 0;
@@ -60,7 +69,7 @@ async function scrapePetHeavenAllCategories() {
             }
             await page.waitForTimeout(2000);
         } catch (err) {
-            console.log('⚠️ تنبيه أثناء التمرير، تم التجاوز للاستقرار.');
+            console.log('⚠️ error during scrolling:', err.message);
         }
     }
 
@@ -74,20 +83,88 @@ async function scrapePetHeavenAllCategories() {
     }
 
     async function extractProducts(categoryName) {
-        const productSelector = 'li.snize-product, .products-grid .item, .products-list .item, li.item.product-item';
+        const productSelector = 'li.snize-product, .products-grid .item, .products-list .item, li.item';
+
         return await page.$$eval(productSelector, (items, catName) => {
-            return items.map(item => {
-                const nameEl  = item.querySelector('.snize-title') || item.querySelector('.product-name a') || item.querySelector('.product-item-name a') || item.querySelector('h2 a, h3 a');
-                const priceEl = item.querySelector('.snize-price') || item.querySelector('.price') || item.querySelector('[id^="product-price-"]');
-                const linkEl  = item.querySelector('a.snize-view-link') || item.querySelector('a.product-image') || item.querySelector('a[href]');
-                return {
-                    name:   nameEl?.innerText?.trim() || null,
-                    price:  priceEl?.textContent?.replace(/\s+/g, ' ').trim() || null,
-                    url:    linkEl?.href || null,
-                    source: 'PetHeaven',
-                    category: catName
-                };
-            }).filter(p => p.name && p.price && p.name.length > 3);
+            const products = [];
+
+            items.forEach(item => {
+                const nameEl = item.querySelector('.product-name a') || item.querySelector('h2 a');
+                const linkEl = item.querySelector('.product-name a') || item.querySelector('a[href]');
+
+                const baseName = nameEl?.textContent?.trim();
+                const url = linkEl?.href;
+
+                if (!baseName || !url) return;
+
+                // 1. setup for products with multiple size variants (like dog food bags)
+                const scripts = [...item.querySelectorAll('script')].map(s => s.textContent || '');
+                let foundVariants = false;
+
+                for (const scriptText of scripts) {
+                    if (!scriptText.includes('new SubscriptionSwatch')) continue;
+
+                    try {
+                        // extract the JSON object that contains the variant options and prices using regex
+                        const jsonMatch = scriptText.match(/"configOptions"\s*:\s*(\{[\s\S]*?\})\s*,\s*"regularPriceLabel"/);
+                        if (!jsonMatch) continue;
+
+                        const configOptions = JSON.parse(jsonMatch[1]);
+                        
+                        // pass through the JSON options to extract variant-specific details like size and price for each variant of this product
+                        // use the first attribute key to get the options array since we assume there's only one type of variant (like size) for these products
+                        const attributes = configOptions.config?.attributes || {};
+                        const firstAttrKey = Object.keys(attributes)[0];
+                        const jsonOptions = attributes[firstAttrKey]?.options || [];
+
+                        // in case there are swatches (like size options) we need to match them with the JSON options to get the correct price for each variant
+                        const swatches = item.querySelectorAll('.swatch-option');
+
+                        if (jsonOptions.length > 0 && swatches.length > 0) {
+                            
+                            // rotate through each swatch (variant) and find the matching option in the JSON to extract the correct price for that variant
+                            swatches.forEach(swatch => {
+                                const optionId = swatch.getAttribute('data-option-id');
+                                const sizeLabel = swatch.getAttribute('data-option-label');
+
+                                // search for the matching option in the JSON using the extracted option ID
+                                const matchedJsonOption = jsonOptions.find(opt => String(opt.id) === String(optionId));
+
+                                if (matchedJsonOption) {
+                                    products.push({
+                                        name: sizeLabel ? `${baseName} ${sizeLabel}` : baseName,
+                                        price: `R${matchedJsonOption.once_off_price}`, // get the one-time price for this variant
+                                        subscription_price: `R${matchedJsonOption.subscription_price}`, // added field for subscription price if available
+                                        url,
+                                        source: 'PetHeaven',
+                                        category: catName,
+                                        size: sizeLabel
+                                    });
+                                }
+                            });
+                            foundVariants = true;
+                        }
+                    } catch (e) {
+                        // if any error occurs during the variant extraction process, we log it and fallback to basic extraction for this product
+                        console.log('⚠️ error while analyzing product options, skipping this product.');
+                        continue;
+                    }
+                }
+
+                // 2. products without variants or if variant extraction failed, fallback to basic extraction
+                if (!foundVariants) {
+                    const priceEl = item.querySelector('.price-box .regular-price .price') || item.querySelector('.price');
+                    products.push({
+                        name: baseName,
+                        price: priceEl?.textContent?.replace(/\s+/g, ' ').trim() || 'N/A',
+                        url,
+                        source: 'PetHeaven',
+                        category: catName
+                    });
+                }
+            });
+
+            return products;
         }, categoryName);
     }
 
@@ -100,7 +177,7 @@ async function scrapePetHeavenAllCategories() {
             const btn = await page.$(nextButtonSelector);
             if (!btn) return false;
 
-            console.log(' Republic 🖱️ الانتقال برمجياً إلى الصفحة التالية...');
+            console.log(' Republic 🖱️ clicking next page...');
             await page.evaluate((sel) => {
                 const el = document.querySelector(sel);
                 if (el) el.click();
@@ -117,10 +194,10 @@ async function scrapePetHeavenAllCategories() {
         }
     }
 
-    // الدوران على كافة التصنيفات المطلوبة
+    // rotate through each category to extract products
     for (const cat of categories) {
         console.log(`\n📂 ─────────────────────────────────────────────`);
-        console.log(`🚀 بدء كشط تصنيف [ ${cat.name} ] من موقع PetHeaven...`);
+        console.log(`🚀 beginning scrape for category [ ${cat.name} ] from PetHeaven...`);
         console.log(`📂 ─────────────────────────────────────────────`);
 
         try {
@@ -129,7 +206,7 @@ async function scrapePetHeavenAllCategories() {
             await page.waitForTimeout(2000);
             await dismissOverlays();
 
-            // الفرز الافتراضي حسب التقييم
+            // attempt to sort by rating if the option exists to prioritize top-rated products
             try {
                 await page.waitForSelector('.sort-by select', { timeout: 5000 });
                 const ratingValue = await page.evaluate(() => {
@@ -141,9 +218,9 @@ async function scrapePetHeavenAllCategories() {
                     await page.selectOption('.sort-by select', ratingValue);
                     await page.waitForTimeout(5000);
                 }
-            } catch (e) { console.log('ℹ️ لم يتوفر خيار الفرز الفوري.'); }
+            } catch (e) { console.log('ℹ️ no sorting option available.'); }
 
-            // تعظيم حجم العرض لـ 112 لتسريع الجلب الشامل
+            // increase products per page to reduce pagination if the option exists
             try {
                 await page.waitForSelector('.limiter select', { timeout: 5000 });
                 const selectValue = await page.evaluate(() => {
@@ -162,14 +239,14 @@ async function scrapePetHeavenAllCategories() {
             let catProductsCount = 0;
 
             while (true) {
-                console.log(`\n🔍 كشط الصفحة رقم: ${pageNum} لتصنيف [${cat.name}]...`);
+                console.log(`\n🔍 scraping page number: ${pageNum} for category [${cat.name}]...`);
                 await scrollSlowlyToBottom();
 
                 const pageProducts = await extractProducts(cat.name).catch(() => []);
-                console.log(`   ✓ تم العثور على ${pageProducts.length} منتج في الصفحة.`);
+                console.log(`   ✓ found ${pageProducts.length} products on this page.`);
 
                 if (pageProducts.length === 0) {
-                    console.log('   ⚠️ لا توجد منتجات إضافية، الانتقال للتصنيف التالي.');
+                    console.log('   ⚠️ no products found on this page, stopping pagination for this category.');
                     break;
                 }
 
@@ -181,7 +258,7 @@ async function scrapePetHeavenAllCategories() {
                         catProductsCount++;
                     }
                 }
-                console.log(`   ➕ أُضيف ${added} منتج جديد | إجمالي هذا التصنيف حتى الآن: ${catProductsCount}`);
+                console.log(`   ➕ added ${added} product new | Total for this category so far: ${catProductsCount}`);
 
                 const nextButton = await page.$(nextButtonSelector);
                 if (nextButton) {
@@ -189,17 +266,17 @@ async function scrapePetHeavenAllCategories() {
                     const success = await goToNextPage(nextButtonSelector);
                     if (!success) break;
                 } else {
-                    console.log(`✓ اكتمل جمع كافة صفحات تصنيف [${cat.name}].`);
+                    console.log(`✓ completed collecting all pages for category [${cat.name}].`);
                     break;
                 }
             }
         } catch (catErr) {
-            console.error(`❌ خطأ أثناء معالجة تصنيف ${cat.name}:`, catErr.message);
+            console.error(`❌ error while processing category ${cat.name}:`, catErr.message);
         }
     }
 
     await browser.close();
-    console.log(`\n🎉 انتهى الكشط الشامل لـ PetHeaven! إجمالي المنتجات المستخرجة لكل الأقسام: ${allProducts.length}`);
+    console.log(`\n🎉 completed scraping PetHeaven! Total products extracted for all categories: ${allProducts.length}`);
     return allProducts;
 }
 
