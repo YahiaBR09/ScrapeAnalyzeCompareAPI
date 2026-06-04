@@ -314,6 +314,7 @@ app.listen(PORT, () => {
     console.log(`   GET  /market?minSavings=50    - Only deals with 50+ rand savings`);
     console.log(`   GET  /market/deals            - Best deals (significant savings)`);
     console.log(`   GET  /market/stats            - General statistics`);
+    console.log(`   GET  /market/export           - export to excel file`);
     console.log(`   GET  /market/sync             - Manual data update`);
     console.log(`   GET  /health                  - Server health check`);
     console.log(`${'='.repeat(50)}\n`);
